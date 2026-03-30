@@ -52,6 +52,13 @@ def _make_mock_platform(mocker, device_type: str = "cuda", env_var: str = "CUDA_
     mock_platform = mocker.MagicMock()
     mock_platform.device_type = device_type
     mock_platform.device_control_env_var = env_var
+    mock_platform.get_device_count.return_value = 8
+
+    def _set_env(devices):
+        os.environ[env_var] = str(devices)
+
+    mock_platform.set_device_control_env_var.side_effect = _set_env
+    mock_platform.unset_device_control_env_var.side_effect = lambda: os.environ.pop(env_var, None)
     return mock_platform
 
 
@@ -65,10 +72,7 @@ def test_set_stage_devices_respects_logical_ids(mocker: MockerFixture, monkeypat
 
     # Mock the platform at the source module where it's defined
     mock_platform = _make_mock_platform(mocker, device_type="cuda", env_var="CUDA_VISIBLE_DEVICES")
-    monkeypatch.setattr(
-        "vllm_omni.platforms.current_omni_platform",
-        mock_platform,
-    )
+    monkeypatch.setattr("vllm_omni.entrypoints.stage_utils.current_omni_platform", mock_platform)
 
     set_stage_devices(stage_id=0, devices="0,1")
 
@@ -76,23 +80,46 @@ def test_set_stage_devices_respects_logical_ids(mocker: MockerFixture, monkeypat
 
 
 @pytest.mark.usefixtures("clean_gpu_memory_between_tests")
-def test_set_stage_devices_handles_not_enough_devices(mocker: MockerFixture, monkeypatch: pytest.MonkeyPatch):
-    # Preserve an existing logical mapping and ensure devices "0,1" map through it.
+def test_set_stage_devices_falls_back_to_visible_subset(mocker: MockerFixture, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "6,7")
     call_log: list[int] = []
     dummy_torch = _make_dummy_torch(call_log)
     monkeypatch.setitem(sys.modules, "torch", dummy_torch)
 
-    # Mock the platform at the source module where it's defined
     mock_platform = _make_mock_platform(mocker, device_type="cuda", env_var="CUDA_VISIBLE_DEVICES")
-    monkeypatch.setattr(
-        "vllm_omni.platforms.current_omni_platform",
-        mock_platform,
-    )
+    monkeypatch.setattr("vllm_omni.entrypoints.stage_utils.current_omni_platform", mock_platform)
 
-    # Raise since we need 4 GPUs, but we only have 2 visible
-    with pytest.raises(ValueError):
-        set_stage_devices(stage_id=0, devices="0,1,2,3")
+    set_stage_devices(stage_id=0, devices="0,1,2,3")
+
+    assert os.environ["CUDA_VISIBLE_DEVICES"] == "6,7"
+
+
+@pytest.mark.usefixtures("clean_gpu_memory_between_tests")
+def test_set_stage_devices_uses_actual_device_count_without_outer_visibility(
+    mocker: MockerFixture, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+
+    mock_platform = _make_mock_platform(mocker, device_type="cuda", env_var="CUDA_VISIBLE_DEVICES")
+    mock_platform.get_device_count.return_value = 2
+    monkeypatch.setattr("vllm_omni.entrypoints.stage_utils.current_omni_platform", mock_platform)
+
+    set_stage_devices(stage_id=0, devices="0,1,2,3")
+
+    assert os.environ["CUDA_VISIBLE_DEVICES"] == "0,1"
+
+
+@pytest.mark.usefixtures("clean_gpu_memory_between_tests")
+def test_set_stage_devices_still_errors_for_unmappable_sparse_ids(
+    mocker: MockerFixture, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "6,7")
+
+    mock_platform = _make_mock_platform(mocker, device_type="cuda", env_var="CUDA_VISIBLE_DEVICES")
+    monkeypatch.setattr("vllm_omni.entrypoints.stage_utils.current_omni_platform", mock_platform)
+
+    with pytest.raises(ValueError, match="none of which map"):
+        set_stage_devices(stage_id=0, devices="4,5,6,7")
 
 
 @pytest.mark.usefixtures("clean_gpu_memory_between_tests")
@@ -120,12 +147,8 @@ def test_set_stage_devices_npu_platform(mocker: MockerFixture, monkeypatch: pyte
 
     monkeypatch.setitem(sys.modules, "torch", _NpuTorch)
 
-    # Mock NPU platform at the source module where it's defined
     mock_platform = _make_mock_platform(mocker, device_type="npu", env_var="ASCEND_RT_VISIBLE_DEVICES")
-    monkeypatch.setattr(
-        "vllm_omni.platforms.current_omni_platform",
-        mock_platform,
-    )
+    monkeypatch.setattr("vllm_omni.entrypoints.stage_utils.current_omni_platform", mock_platform)
 
     set_stage_devices(stage_id=0, devices="0,1")
 
