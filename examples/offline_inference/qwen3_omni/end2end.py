@@ -262,7 +262,7 @@ query_map = {
 }
 
 
-def main(args):
+def main(args, parser=None):
     model_name = args.model
     print("=" * 20, "\n", f"vllm version: {vllm.__version__}", "\n", "=" * 20)
 
@@ -294,7 +294,7 @@ def main(args):
     else:
         query_result = query_func()
 
-    omni = Omni.from_cli_args(args, model=model_name)
+    omni = Omni.from_cli_args(args, parser=parser, model=model_name)
 
     thinker_sampling_params = SamplingParams(
         temperature=0.9,
@@ -550,9 +550,9 @@ def parse_args():
         help="Model dtype (auto, half, float16, bfloat16, float, float32).",
     )
 
-    return parser.parse_args()
+    return parser, parser.parse_args()
 
 
 if __name__ == "__main__":
-    args = parse_args()
-    main(args)
+    parser, args = parse_args()
+    main(args, parser=parser)
