@@ -24,17 +24,18 @@ def parse_args():
     parser.add_argument("--width", type=int, default=448, help="Video width.")
     parser.add_argument("--num-inference-steps", type=int, default=8, help="Number of denoising steps.")
     parser.add_argument("--seed", type=int, default=52, help="Random seed for generation.")
-    return parser.parse_args()
+    args = parser.parse_args()
+    return parser, args
 
 
 def main():
-    args = parse_args()
+    parser, args = parse_args()
 
     print(f"Initializing MagiHuman pipeline with TP={args.tensor_parallel_size}...")
-    omni = Omni(
-        model=args.model,
+    omni = Omni.from_cli_args(
+        args,
+        parser=parser,
         init_timeout=1200,
-        tensor_parallel_size=args.tensor_parallel_size,
         devices=list(range(args.tensor_parallel_size)),
     )
 

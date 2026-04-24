@@ -117,11 +117,11 @@ def parse_args():
     )
 
     args = parser.parse_args()
-    return args
+    return parser, args
 
 
 def main():
-    args = parse_args()
+    parser, args = parse_args()
     os.makedirs(args.output, exist_ok=True)
     model_name = args.model
     prompts: list[OmniPromptType] = []
@@ -170,7 +170,7 @@ def main():
     if args.quantization:
         omni_kwargs["quantization_config"] = args.quantization
 
-    omni = Omni(model=model_name, **omni_kwargs)
+    omni = Omni.from_cli_args(args, parser=parser, model=model_name, **omni_kwargs)
 
     formatted_prompts = []
     for p in prompts:

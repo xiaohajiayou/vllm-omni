@@ -59,7 +59,7 @@ def parse_profiler_config(value: str) -> dict[str, Any]:
     return config
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args() -> tuple[argparse.ArgumentParser, argparse.Namespace]:
     parser = argparse.ArgumentParser(description="Generate a video from an image (Wan2.2, LTX2, HunyuanVideo-1.5).")
     parser.add_argument(
         "--model",
@@ -211,7 +211,8 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help='JSON profiler config for torch/cuda profiling, e.g. \'{"profiler":"torch","torch_profiler_dir":"./perf"}\'.',
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    return parser, args
 
 
 def calculate_dimensions(
@@ -229,7 +230,7 @@ def calculate_dimensions(
 
 
 def main():
-    args = parse_args()
+    parser, args = parse_args()
     generator = torch.Generator(device=current_omni_platform.device_type).manual_seed(args.seed)
     model_name = str(args.model).lower() if args.model is not None else ""
     model_class_name = args.model_class_name
@@ -302,18 +303,12 @@ def main():
         hsdp_shard_size=args.hsdp_shard_size,
         hsdp_replicate_size=args.hsdp_replicate_size,
     )
-    omni = Omni(
-        model=args.model,
-        enable_layerwise_offload=args.enable_layerwise_offload,
-        vae_use_slicing=args.vae_use_slicing,
-        vae_use_tiling=args.vae_use_tiling,
-        boundary_ratio=args.boundary_ratio,
-        flow_shift=args.flow_shift,
+    omni = Omni.from_cli_args(
+        args,
+        parser=parser,
         enable_cpu_offload=args.enable_cpu_offload,
         parallel_config=parallel_config,
-        enforce_eager=args.enforce_eager,
         model_class_name=model_class_name,
-        cache_backend=args.cache_backend,
         cache_config=cache_config,
         enable_diffusion_pipeline_profiler=args.enable_diffusion_pipeline_profiler,
         profiler_config=args.profiler_config,

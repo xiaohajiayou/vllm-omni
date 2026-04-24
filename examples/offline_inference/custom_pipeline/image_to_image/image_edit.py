@@ -73,7 +73,7 @@ def parse_profiler_config(value: str) -> dict[str, Any]:
 # ===========================
 # Argument Parser
 # ===========================
-def parse_args() -> argparse.Namespace:
+def parse_args() -> tuple[argparse.ArgumentParser, argparse.Namespace]:
     parser = argparse.ArgumentParser(description="Edit or generate images using Qwen-Image-Edit.")
     parser.add_argument("--model", default="Qwen/Qwen-Image-Edit", help="Model name or local path.")
     parser.add_argument("--image", type=str, nargs="+", required=True, help="Input image file(s).")
@@ -118,14 +118,15 @@ def parse_args() -> argparse.Namespace:
         help='JSON profiler config for torch/cuda profiling, e.g. \'{"profiler":"torch","torch_profiler_dir":"./perf"}\'.',
     )
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    return parser, args
 
 
 # ===========================
 # Core Logic
 # ===========================
 async def main():
-    args = parse_args()
+    parser, args = parse_args()
 
     # ---- Load input images ----
     input_images: list[Image.Image] = []
@@ -165,14 +166,11 @@ async def main():
         cache_config = None
 
     # ---- Initialize Omni ----
-    omni = Omni(
-        model=args.model,
-        vae_use_slicing=args.vae_use_slicing,
-        vae_use_tiling=args.vae_use_tiling,
-        cache_backend=args.cache_backend,
+    omni = Omni.from_cli_args(
+        args,
+        parser=parser,
         cache_config=cache_config,
         parallel_config=parallel_config,
-        enforce_eager=args.enforce_eager,
         enable_cpu_offload=args.enable_cpu_offload,
         diffusion_load_format="dummy",
         custom_pipeline_args={"pipeline_class": "custom_pipeline.CustomPipeline"},

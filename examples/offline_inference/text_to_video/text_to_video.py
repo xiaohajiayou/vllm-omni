@@ -55,7 +55,7 @@ def parse_profiler_config(value: str) -> dict[str, Any]:
     return config
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args() -> tuple[argparse.ArgumentParser, argparse.Namespace]:
     parser = argparse.ArgumentParser(
         description="Generate a video from a text prompt. "
         "Supports Wan2.2, HunyuanVideo-1.5, and other text-to-video models."
@@ -226,11 +226,12 @@ def parse_args() -> argparse.Namespace:
         default=1,
         help="Number of HSDP replica groups.",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    return parser, args
 
 
 def main():
-    args = parse_args()
+    parser, args = parse_args()
     model_class_name = args.model_class_name
 
     preset = _detect_preset(args.model)
@@ -292,7 +293,7 @@ def main():
         omni_kwargs["cache_config"] = cache_config
         omni_kwargs["enable_cache_dit_summary"] = args.enable_cache_dit_summary
 
-    omni = Omni(**omni_kwargs)
+    omni = Omni.from_cli_args(args, parser=parser, **omni_kwargs)
 
     if profiler_enabled:
         print("[Profiler] Starting profiling...")

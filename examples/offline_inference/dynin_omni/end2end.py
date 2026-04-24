@@ -871,7 +871,7 @@ def save_audio_wav(path: Path, wav: np.ndarray, sr: int) -> None:
         wavfile.write(str(path), int(sr), wav_i16)
 
 
-def parse_args(repo_root: Path) -> argparse.Namespace:
+def parse_args(repo_root: Path) -> tuple[argparse.ArgumentParser, argparse.Namespace]:
     parser = argparse.ArgumentParser(description="Dynin-Omni unified offline end2end example.")
     parser.add_argument("--task", type=str, required=True, choices=TASK_CHOICES)
     parser.add_argument("--model", type=str, required=True, help="HF repo id or local model directory.")
@@ -970,7 +970,8 @@ def parse_args(repo_root: Path) -> argparse.Namespace:
     parser.add_argument("--vq-model-audio-local-files-only", action=argparse.BooleanOptionalAction, default=None)
 
     parser.add_argument("--disable-hf-xet", action=argparse.BooleanOptionalAction, default=True)
-    return parser.parse_args()
+    args = parser.parse_args()
+    return parser, args
 
 
 def main() -> None:
@@ -981,7 +982,7 @@ def main() -> None:
         DYNIN_PROMPT_SOURCE_OFFLINE_PREBUILT,
     )
 
-    args = parse_args(repo_root)
+    parser, args = parse_args(repo_root)
 
     if args.disable_hf_xet:
         os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
@@ -1395,7 +1396,12 @@ def main() -> None:
     from vllm_omni.entrypoints.omni import Omni
 
     stage_config_path = str(Path(args.stage_config_path).expanduser())
-    omni = Omni(model=model_source, stage_configs_path=stage_config_path, dtype=args.dtype)
+    omni = Omni.from_cli_args(
+        args,
+        parser=parser,
+        model=model_source,
+        stage_configs_path=stage_config_path,
+    )
     sampling_params_list = [
         SamplingParams(max_tokens=int(args.max_tokens_per_stage), temperature=0.0, top_p=1.0, detokenize=False)
         for _ in range(omni.num_stages)

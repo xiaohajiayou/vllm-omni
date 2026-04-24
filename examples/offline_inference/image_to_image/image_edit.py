@@ -113,7 +113,7 @@ def parse_profiler_config(value: str) -> dict[str, Any]:
     return config
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args() -> tuple[argparse.ArgumentParser, argparse.Namespace]:
     parser = argparse.ArgumentParser(description="Edit an image with Qwen-Image-Edit.")
     parser.add_argument(
         "--model",
@@ -378,11 +378,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help='JSON profiler config for torch/cuda profiling, e.g. \'{"profiler":"torch","torch_profiler_dir":"./perf"}\'.',
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    return parser, args
 
 
 def main():
-    args = parse_args()
+    parser, args = parse_args()
 
     # Validate input images exist and load them
     input_images = []
@@ -432,15 +433,11 @@ def main():
         }
 
     # Initialize Omni with appropriate pipeline
-    omni = Omni(
-        model=args.model,
-        enable_layerwise_offload=args.enable_layerwise_offload,
-        vae_use_slicing=args.vae_use_slicing,
-        vae_use_tiling=args.vae_use_tiling,
-        cache_backend=args.cache_backend,
+    omni = Omni.from_cli_args(
+        args,
+        parser=parser,
         cache_config=cache_config,
         parallel_config=parallel_config,
-        enforce_eager=args.enforce_eager,
         enable_cpu_offload=args.enable_cpu_offload,
         enable_diffusion_pipeline_profiler=args.enable_diffusion_pipeline_profiler,
         profiler_config=args.profiler_config,

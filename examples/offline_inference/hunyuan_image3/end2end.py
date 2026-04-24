@@ -135,11 +135,12 @@ def parse_args():
     parser.add_argument("--init-timeout", type=int, default=300, help="Initialization timeout in seconds.")
     parser.add_argument("--enforce-eager", action="store_true", help="Disable torch.compile.")
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    return parser, args
 
 
 def main():
-    args = parse_args()
+    parser, args = parse_args()
     os.makedirs(args.output, exist_ok=True)
 
     # Determine task for prompt formatting
@@ -159,7 +160,7 @@ def main():
     if args.modality in ("text2img", "img2img"):
         omni_kwargs["mode"] = "text-to-image"
 
-    omni = Omni(**omni_kwargs)
+    omni = Omni.from_cli_args(args, parser=parser, **omni_kwargs)
 
     # Prepare prompts
     prompts = args.prompts or ["A cute cat"]

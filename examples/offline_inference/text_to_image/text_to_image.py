@@ -40,7 +40,7 @@ def parse_profiler_config(value: str) -> dict[str, Any]:
     return config
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args() -> tuple[argparse.ArgumentParser, argparse.Namespace]:
     parser = argparse.ArgumentParser(description="Generate an image with supported diffusion models.")
     parser.add_argument(
         "--model",
@@ -300,11 +300,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=("Custom system prompt. Used when --use-system-prompt is custom. "),
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    return parser, args
 
 
 def main():
-    args = parse_args()
+    parser, args = parse_args()
     generator = torch.Generator(device=current_omni_platform.device_type).manual_seed(args.seed)
     use_nextstep = is_nextstep_model(args.model)
 
@@ -401,7 +402,7 @@ def main():
     if use_nextstep:
         # NextStep-1.1 requires explicit pipeline class
         omni_kwargs["model_class_name"] = "NextStep11Pipeline"
-    omni = Omni(**omni_kwargs)
+    omni = Omni.from_cli_args(args, parser=parser, **omni_kwargs)
 
     if profiler_enabled:
         print("[Profiler] Starting profiling...")

@@ -39,7 +39,7 @@ from vllm_omni.inputs.data import OmniDiffusionSamplingParams
 from vllm_omni.platforms import current_omni_platform
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args() -> tuple[argparse.ArgumentParser, argparse.Namespace]:
     parser = argparse.ArgumentParser(description="VACE video generation.")
     parser.add_argument(
         "--model",
@@ -71,7 +71,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ulysses-degree", type=int, default=1, help="Ulysses SP degree.")
     parser.add_argument("--ring-degree", type=int, default=1, help="Ring attention degree.")
     parser.add_argument("--cfg-parallel-size", type=int, default=1, choices=[1, 2], help="CFG parallel size.")
-    return parser.parse_args()
+    args = parser.parse_args()
+    return parser, args
 
 
 def build_prompts(args):
@@ -144,7 +145,7 @@ def build_prompts(args):
 
 
 def main():
-    args = parse_args()
+    parser, args = parse_args()
     generator = torch.Generator(device=current_omni_platform.device_type).manual_seed(args.seed)
 
     parallel_config = DiffusionParallelConfig(
@@ -153,11 +154,9 @@ def main():
         cfg_parallel_size=args.cfg_parallel_size,
     )
 
-    omni = Omni(
-        model=args.model,
-        vae_use_tiling=args.vae_use_tiling,
-        flow_shift=args.flow_shift,
-        enforce_eager=args.enforce_eager,
+    omni = Omni.from_cli_args(
+        args,
+        parser=parser,
         parallel_config=parallel_config,
     )
 

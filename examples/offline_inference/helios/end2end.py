@@ -91,7 +91,7 @@ def load_video_as_tensor(video_path: str, height: int, width: int) -> torch.Tens
     return video_frames.permute(1, 0, 2, 3).unsqueeze(0)
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args() -> tuple[argparse.ArgumentParser, argparse.Namespace]:
     parser = argparse.ArgumentParser(description="Generate a video with Helios (T2V / I2V / V2V).")
     parser.add_argument(
         "--model",
@@ -196,11 +196,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cfg-parallel-size", type=int, default=1, choices=[1, 2], help="CFG parallel size.")
     parser.add_argument("--tensor-parallel-size", type=int, default=1, help="Tensor parallelism size.")
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    return parser, args
 
 
 def main():
-    args = parse_args()
+    parser, args = parse_args()
     generator = torch.Generator(device=current_omni_platform.device_type).manual_seed(args.seed)
 
     parallel_config = DiffusionParallelConfig(
@@ -210,16 +211,12 @@ def main():
         tensor_parallel_size=args.tensor_parallel_size,
     )
 
-    omni = Omni(
-        model=args.model,
-        enable_layerwise_offload=args.enable_layerwise_offload,
-        vae_use_slicing=args.vae_use_slicing,
-        vae_use_tiling=args.vae_use_tiling,
+    omni = Omni.from_cli_args(
+        args,
+        parser=parser,
         enable_cpu_offload=args.enable_cpu_offload,
         parallel_config=parallel_config,
-        enforce_eager=args.enforce_eager,
         enable_diffusion_pipeline_profiler=args.enable_diffusion_pipeline_profiler,
-        quantization=args.quantization,
     )
 
     # Validate I2V / V2V arguments
