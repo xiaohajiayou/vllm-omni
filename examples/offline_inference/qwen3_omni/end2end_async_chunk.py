@@ -343,7 +343,7 @@ async def run_single_request(
     return result
 
 
-async def run_all(args):
+async def run_all(args, parser=None):
     """Main async entry: build prompts, create AsyncOmni, run requests."""
     # Build query
     query_func = query_map[args.query_type]
@@ -389,7 +389,7 @@ async def run_all(args):
         # ``EngineArgs.from_cli_args`` pattern used throughout vllm /
         # vllm-omni. ``deploy_config=None`` (the default) falls through to
         # the bundled ``vllm_omni/deploy/qwen3_omni_moe.yaml``.
-        async_omni = AsyncOmni.from_cli_args(args)
+        async_omni = AsyncOmni.from_cli_args(args, parser=parser)
 
         # Use default sampling params from stage config (they are pre-configured
         # in the YAML for each stage).
@@ -591,18 +591,18 @@ def parse_args():
         default=16000,
         help="Sampling rate for audio loading.",
     )
-    return parser.parse_args()
+    return parser, parser.parse_args()
 
 
 if __name__ == "__main__":
-    args = parse_args()
+    parser, args = parse_args()
 
     async def _main():
         batch_timeout = getattr(args, "batch_timeout_s", None)
         if batch_timeout and batch_timeout > 0:
-            await asyncio.wait_for(run_all(args), timeout=batch_timeout)
+            await asyncio.wait_for(run_all(args, parser=parser), timeout=batch_timeout)
         else:
-            await run_all(args)
+            await run_all(args, parser=parser)
 
     try:
         asyncio.run(_main())

@@ -289,7 +289,7 @@ query_map = {
 }
 
 
-def main(args):
+def main(args, parser=None):
     model_name = args.model
     quantization_config = None
     if args.quantization_config is not None:
@@ -325,7 +325,7 @@ def main(args):
     else:
         query_result = query_func()
     args.quantization_config = quantization_config
-    omni = Omni.from_cli_args(args, model=model_name)
+    omni = Omni.from_cli_args(args, parser=parser, model=model_name)
     thinker_sampling_params = SamplingParams(
         temperature=0.0,  # Deterministic - no randomness
         top_p=1.0,  # Disable nucleus sampling
@@ -550,9 +550,9 @@ def parse_args():
         default=False,
         help="Use py_generator mode. The returned type of Omni.generate() is a Python Generator object.",
     )
-    return parser.parse_args()
+    return parser, parser.parse_args()
 
 
 if __name__ == "__main__":
-    args = parse_args()
-    main(args)
+    parser, args = parse_args()
+    main(args, parser=parser)

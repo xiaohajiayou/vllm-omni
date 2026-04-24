@@ -360,13 +360,13 @@ def _save_wav(output_dir: str, request_id: str, mm: dict) -> None:
     logger.info(f"Request ID: {request_id}, Saved audio to {out_wav}")
 
 
-def main(args):
+def main(args, parser=None):
     """Run offline inference with Omni."""
     model_name, inputs = _build_inputs(args)
     output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
 
-    omni = Omni.from_cli_args(args, model=model_name)
+    omni = Omni.from_cli_args(args, parser=parser, model=model_name)
 
     batch_size = args.batch_size
     for batch_start in range(0, len(inputs), batch_size):
@@ -376,13 +376,13 @@ def main(args):
             _save_wav(output_dir, output.request_id, output.outputs[0].multimodal_output)
 
 
-async def main_streaming(args):
+async def main_streaming(args, parser=None):
     """Run offline inference with AsyncOmni, logging each audio chunk as it arrives."""
     model_name, inputs = _build_inputs(args)
     output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
 
-    omni = AsyncOmni.from_cli_args(args, model=model_name)
+    omni = AsyncOmni.from_cli_args(args, parser=parser, model=model_name)
 
     for i, prompt in enumerate(inputs):
         request_id = str(i)
@@ -524,12 +524,12 @@ def parse_args():
         help="Number of prompts per batch (default: 1, sequential).",
     )
 
-    return parser.parse_args()
+    return parser, parser.parse_args()
 
 
 if __name__ == "__main__":
-    args = parse_args()
+    parser, args = parse_args()
     if args.streaming:
-        asyncio.run(main_streaming(args))
+        asyncio.run(main_streaming(args, parser=parser))
     else:
-        main(args)
+        main(args, parser=parser)
