@@ -32,6 +32,28 @@ logger = init_logger(__name__)
 
 _STAGE_OVERRIDE_PATTERN = re.compile(r"^stage_(\d+)_(.+)$")
 
+_RUNTIME_OVERRIDE_LEGACY_FIELDS = frozenset(
+    {
+        # Runtime-only fields that are still consumed from runtime_overrides.
+        "devices",
+        "num_replicas",
+        # Legacy compat: migrated to engine_args.max_num_seqs in to_omegaconf().
+        "max_batch_size",
+    }
+)
+
+
+def deploy_override_field_names() -> frozenset[str]:
+    """Return CLI keys allowed to override deploy/stage config values.
+
+    This is derived from the deploy schema rather than from OrchestratorArgs
+    ownership. A field being present on ``OrchestratorArgs`` does not imply it
+    should be filtered out of per-stage runtime overrides.
+    """
+    stage_fields = frozenset(_STAGE_DEPLOY_FIELDS.keys())
+    pipeline_fields = frozenset(_PIPELINE_WIDE_ENGINE_FIELDS)
+    return stage_fields | pipeline_fields | _RUNTIME_OVERRIDE_LEGACY_FIELDS
+
 
 def build_stage_runtime_overrides(
     stage_id: int,
@@ -41,34 +63,38 @@ def build_stage_runtime_overrides(
 ) -> dict[str, Any]:
     """Build per-stage runtime overrides from global and ``stage_<id>_*`` kwargs.
 
-    ``internal_keys`` defaults to the union of
-    ``arg_utils.internal_blacklist_keys()`` and ``arg_utils.SHARED_FIELDS``
-    so that neither orchestrator-only fields nor shared-pipeline fields
-    (``model`` / ``stage_configs_path`` / ``log_stats`` / ``stage_id``) leak
-    into a stage's per-stage runtime overrides — the orchestrator sets those
-    uniformly for every stage, they are not per-stage knobs. Callers can
-    pass an explicit set for tests or specialized flows.
+    Only deploy/stage-config override fields are accepted.  This keeps the
+    override contract aligned with the deploy schema instead of inferring it
+    from ``OrchestratorArgs`` ownership.
+
+    ``internal_keys`` can still be passed by tests or specialized flows to
+    further exclude specific keys, but it is no longer the primary source of
+    truth for whether a key is overrideable.
     """
     if internal_keys is None:
-        from vllm_omni.engine.arg_utils import SHARED_FIELDS, internal_blacklist_keys
-
-        internal_keys = internal_blacklist_keys() | SHARED_FIELDS
+        internal_keys = frozenset()
 
     result: dict[str, Any] = {}
+    allowed_keys = deploy_override_field_names()
 
     for key, value in cli_overrides.items():
-        if value is None or key in internal_keys:
+        if value is None:
             continue
 
         match = _STAGE_OVERRIDE_PATTERN.match(key)
         if match is not None:
             override_stage_id = int(match.group(1))
             param_name = match.group(2)
-            if override_stage_id == stage_id and param_name not in internal_keys:
+            if (
+                override_stage_id == stage_id
+                and param_name in allowed_keys
+                and param_name not in internal_keys
+            ):
                 result[param_name] = value
             continue
 
-        result[key] = value
+        if key in allowed_keys and key not in internal_keys:
+            result[key] = value
 
     return result
 
@@ -1619,9 +1645,8 @@ class StageConfigFactory:
     ) -> dict[str, Any]:
         """Merge global and per-stage (``stage_N_*``) CLI overrides.
 
-        Orchestrator-owned keys are filtered by ``build_stage_runtime_overrides``
-        using ``OrchestratorArgs`` as the single source of truth; unknown
-        server/uvicorn keys are dropped downstream by
+        Only deploy-schema override fields are forwarded into per-stage runtime
+        overrides. Unknown server/uvicorn keys are dropped downstream by
         ``filter_dataclass_kwargs(OmniEngineArgs, ...)``.
         """
         return build_stage_runtime_overrides(stage.stage_id, cli_overrides)

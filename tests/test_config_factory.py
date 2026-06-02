@@ -29,12 +29,13 @@ from vllm_omni.config.stage_config import (
     _deep_merge_stage,
     _resolve_scheduler,
     build_stage_runtime_overrides,
+    deploy_override_field_names,
     load_deploy_config,
     merge_pipeline_deploy,
     register_pipeline,
     strip_parent_engine_args,
 )
-from vllm_omni.engine.arg_utils import SHARED_FIELDS, EngineArgs, internal_blacklist_keys
+from vllm_omni.engine.arg_utils import EngineArgs
 
 pytestmark = [pytest.mark.core_model, pytest.mark.cpu]
 
@@ -486,17 +487,38 @@ class TestStageConfigFactory:
         assert overrides["gpu_memory_utilization"] == 0.9
 
     def test_cli_override_forwards_engine_registered_args(self):
-        """Test that any engine-registered CLI arg is forwarded (@wuhang2014)."""
+        """Test that only deploy-schema override fields are forwarded."""
         stage = StageConfig(stage_id=0, model_stage="thinker", input_sources=[])
         cli_overrides = {
             "gpu_memory_utilization": 0.9,  # Well-known param
-            "custom_engine_flag": True,  # Not orchestrator-owned, so forwarded
+            "custom_engine_flag": True,  # Unknown to deploy schema, so dropped
         }
 
         overrides = StageConfigFactory._merge_cli_overrides(stage, cli_overrides)
 
         assert overrides["gpu_memory_utilization"] == 0.9
-        assert overrides["custom_engine_flag"] is True
+        assert "custom_engine_flag" not in overrides
+
+    def test_cli_override_forwards_diffusion_stage_fields(self):
+        """Test that diffusion deploy-schema fields survive the main override path."""
+        stage = StageConfig(
+            stage_id=1,
+            model_stage="diffusion",
+            stage_type=StageType.DIFFUSION,
+            input_sources=[0],
+        )
+        cli_overrides = {
+            "cache_backend": "tea_cache",
+            "cfg_parallel_size": 2,
+            "use_hsdp": True,
+            "stage_1_cfg_parallel_size": 3,
+        }
+
+        overrides = StageConfigFactory._merge_cli_overrides(stage, cli_overrides)
+
+        assert overrides["cache_backend"] == "tea_cache"
+        assert overrides["cfg_parallel_size"] == 3
+        assert overrides["use_hsdp"] is True
 
     def test_cli_override_excludes_internal_keys(self):
         """Test that internal/orchestrator keys are not forwarded."""
@@ -535,9 +557,6 @@ class TestStageResolutionHelpers:
     """Tests for shared stage override / filtering helpers."""
 
     def test_build_stage_runtime_overrides_ignores_other_stage_and_internal_keys(self):
-        # Pass the same filter set the function uses by default
-        # (orchestrator-only fields plus SHARED_FIELDS so ``model`` is
-        # treated as not-per-stage-overridable).
         overrides = build_stage_runtime_overrides(
             0,
             {
@@ -547,12 +566,37 @@ class TestStageResolutionHelpers:
                 "stage_0_model": "should_be_ignored",
                 "parallel_config": {"world_size": 2},
             },
-            internal_keys=internal_blacklist_keys() | SHARED_FIELDS,
         )
 
         assert overrides["gpu_memory_utilization"] == 0.9
         assert "model" not in overrides
         assert "parallel_config" not in overrides
+
+    def test_build_stage_runtime_overrides_allows_diffusion_schema_fields(self):
+        overrides = build_stage_runtime_overrides(
+            1,
+            {
+                "cache_backend": "tea_cache",
+                "cfg_parallel_size": 2,
+                "use_hsdp": True,
+                "hsdp_shard_size": 8,
+                "stage_1_cfg_parallel_size": 3,
+                "stage_0_use_hsdp": False,
+            },
+        )
+
+        assert overrides["cache_backend"] == "tea_cache"
+        assert overrides["cfg_parallel_size"] == 3
+        assert overrides["use_hsdp"] is True
+        assert overrides["hsdp_shard_size"] == 8
+
+    def test_deploy_override_field_names_contains_diffusion_cli_fields(self):
+        allowed = deploy_override_field_names()
+
+        assert "cache_backend" in allowed
+        assert "cfg_parallel_size" in allowed
+        assert "use_hsdp" in allowed
+        assert "hsdp_shard_size" in allowed
 
     def test_strip_parent_engine_args_reports_only_surprising_parent_overrides(self):
         parent_fields = {f.name: f for f in fields(EngineArgs)}
